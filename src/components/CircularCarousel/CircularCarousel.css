@@ -90,6 +90,7 @@
   top: 0;
   width: 100%;
   overflow: hidden;
+  background: color-mix(in srgb, var(--cc-fade) 92%, #8b887e);
 }
 
 .circular-carousel__photo {

@@ -4,10 +4,13 @@ import { RotateCcw, ScanLine, ZoomIn, ZoomOut } from 'lucide-react';
 import HoloCard from './HoloCard.jsx';
 import './AlbumPhoto.css';
 
-export default function AlbumPhoto({image,alt}) {
+export default function AlbumPhoto({image,originalImage,alt}) {
   const host=useRef(null),card=useRef(null),zoom=useRef(null),loadFrame=useRef(0);
   const [size,setSize]=useState({width:640,height:460});
   const [scale,setScale]=useState(1);
+  const [source,setSource]=useState(image);
+  const upgrade=useRef(null),currentScale=useRef(1);
+  currentScale.current=scale;
   const [reduced,setReduced]=useState(()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   useEffect(()=>{
     const query=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -20,6 +23,25 @@ export default function AlbumPhoto({image,alt}) {
     observer.observe(host.current);
     return()=>{observer.disconnect();query.removeEventListener('change',change);cancelAnimationFrame(loadFrame.current);};
   },[]);
+  useEffect(()=>{
+    setSource(image);setScale(1);upgrade.current=null;
+    zoom.current?.centerView(1,0);
+  },[image]);
+  useEffect(()=>{
+    if(scale<=1.25||!originalImage||source===originalImage||upgrade.current)return undefined;
+    // Keep the smaller photo visible while its original is fetched for close inspection.
+    const fullSize=new Image();upgrade.current=fullSize;
+    fullSize.decoding='async';
+    fullSize.onload=()=>{
+      Promise.resolve(fullSize.decode?.()).catch(()=>{}).then(()=>{
+        if(upgrade.current===fullSize)setSource(originalImage);
+      });
+    };
+    fullSize.onerror=()=>{if(upgrade.current===fullSize)upgrade.current=null;};
+    fullSize.src=originalImage;
+    return undefined;
+  },[scale,originalImage,source]);
+  useEffect(()=>()=>{if(upgrade.current)upgrade.current.onload=upgrade.current.onerror=null;upgrade.current=null;},[image]);
   useEffect(()=>{zoom.current?.centerView(1,0);},[size.width,size.height]);
   const duration=reduced?0:160;
   // Wheel deltas are measured in pixels, so trackpad gestures need a small step.
@@ -40,11 +62,11 @@ export default function AlbumPhoto({image,alt}) {
   return <div className="zoom-photo-frame" onKeyDownCapture={keys} data-zoom={scale.toFixed(3)}>
     <div ref={host} className="zoom-photo-host" onLoadCapture={()=>{
       cancelAnimationFrame(loadFrame.current);
-      loadFrame.current=requestAnimationFrame(()=>zoom.current?.centerView(1,0));
+      if(currentScale.current<=1.001)loadFrame.current=requestAnimationFrame(()=>zoom.current?.centerView(1,0));
     }}>
       <TransformWrapper ref={zoom} minScale={1} maxScale={20} centerOnInit centerZoomedOut smooth wheel={{step:0.003}} pinch={{step:3.5}} panning={{disabled:scale<=1.001,velocityDisabled:true}} doubleClick={{mode:'toggle',step:1,animationTime:duration}} zoomAnimation={{disabled:true}} velocityAnimation={{disabled:true}} autoAlignment={{animationTime:duration}} onTransform={(_,state)=>setScale(state.scale)}>
         <TransformComponent wrapperClass="zoom-photo-viewport" contentClass="zoom-photo-content">
-          <div ref={card} className="zoom-photo-card"><HoloCard image={image} alt={alt} preset="bursts" intensity={0.55} frame={1.4} glare={0.22} edgeSparkle={0.45} tiltMax={8} hoverScale={1.015} radius={8} width={Math.max(1,size.width-40)} maxHeight={Math.max(1,size.height-40)} idle={false} hoverOnly/></div>
+          <div ref={card} className="zoom-photo-card"><HoloCard image={source} alt={alt} preset="bursts" intensity={0.55} frame={1.4} glare={0.22} edgeSparkle={0.45} tiltMax={8} hoverScale={1.015} radius={8} width={Math.max(1,size.width-40)} maxHeight={Math.max(1,size.height-40)} idle={false} hoverOnly/></div>
         </TransformComponent>
       </TransformWrapper>
     </div>

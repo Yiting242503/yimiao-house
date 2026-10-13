@@ -5,6 +5,39 @@ const slots = ['yiting', 'haomiao'];
 const normalize = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
 const fail = (message, status) => { throw Object.assign(new Error(message), { status }); };
 const anonymous = () => ({ authenticated: false, authorized: false });
+const pendingUserChecks = new Map();
+const MAX_PENDING_USER_CHECKS = 64;
+
+async function authFetch(config, input, options = {}) {
+  const send = () => fetch(input, { ...options, signal: AbortSignal.timeout(10000) });
+  const url = typeof input === 'string' ? input : input?.url;
+  const headers = new Headers(options.headers);
+  const authorization = headers.get('authorization');
+  // Merge only simultaneous checks of the exact same token and Auth configuration.
+  // This is never a session cache: a later request must contact Auth again.
+  if (url !== `${config.url}/auth/v1/user` || (options.method || 'GET') !== 'GET'
+    || !authorization?.startsWith('Bearer ') || authorization.length > 8192 || options.body != null) return send();
+  const key = JSON.stringify([url, Array.from(headers).sort(([a], [b]) => a.localeCompare(b))]);
+  let checking = pendingUserChecks.get(key);
+  if (!checking) {
+    if (pendingUserChecks.size >= MAX_PENDING_USER_CHECKS) return send();
+    checking = Promise.resolve().then(async () => {
+      try {
+        const response = await send();
+        // Never share a fetch Response or its stream between Worker requests.
+        // Only immutable, fully read data crosses the in-flight boundary.
+        const body = await response.text();
+        const responseHeaders = new Headers(response.headers);
+        responseHeaders.delete('content-length');
+        responseHeaders.delete('content-encoding');
+        return { body, status: response.status, statusText: response.statusText, headers: Array.from(responseHeaders) };
+      } finally { pendingUserChecks.delete(key); }
+    });
+    pendingUserChecks.set(key, checking);
+  }
+  const response = await checking;
+  return new Response([204, 205, 304].includes(response.status) ? null : response.body, response);
+}
 
 function configuration(env) {
   try {
@@ -34,7 +67,7 @@ export function createEmailAuth(request, env) {
   const client = config && createServerClient(config.url, config.key, {
     cookieOptions: { name: COOKIE_NAME, httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 30 * 86400 },
     auth: { autoRefreshToken: false, detectSessionInUrl: false },
-    global: { fetch: (url, options) => fetch(url, { ...options, signal: AbortSignal.timeout(10000) }) },
+    global: { fetch: (url, options) => authFetch(config, url, options) },
     cookies: {
       getAll: () => Array.from(cookies, ([name, value]) => ({ name, value })),
       setAll: values => {
@@ -98,7 +131,13 @@ export function createEmailAuth(request, env) {
     decorateResponse(response) {
       const headers = new Headers(response.headers);
       for (const cookie of pending.values()) headers.append('Set-Cookie', serializeCookieHeader(cookie.name, cookie.value, { ...cookie.options, httpOnly: true, secure: true, sameSite: 'lax', path: '/' }));
-      headers.set('Cache-Control', 'private, no-store');
+      const url = new URL(request.url);
+      const variants = url.searchParams.getAll('variant');
+      const revalidatePreview = pending.size === 0 && ['GET', 'HEAD'].includes(request.method)
+        && /^\/api\/media\/[^/]+$/.test(url.pathname) && variants.length === 1
+        && ['thumb', 'display'].includes(variants[0]) && [200, 304].includes(response.status)
+        && headers.get('Cache-Control') === 'private, no-cache, must-revalidate';
+      if (!revalidatePreview) headers.set('Cache-Control', 'private, no-store');
       headers.set('Pragma', 'no-cache');
       return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     }

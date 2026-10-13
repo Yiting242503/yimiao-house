@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { readFile, readdir } from 'node:fs/promises';
 import { reunionDays } from '../shared/dates.js';
+import { privatePreviewKey } from '../server/private-media-response.js';
 
 const members={yiting:'member-a@example.test',haomiao:'member-b@example.test'};
 const ids={yiting:'11111111-1111-4111-8111-111111111111',haomiao:'22222222-2222-4222-8222-222222222222'};
@@ -12,7 +13,7 @@ const asJson=(value,status=200)=>new Response(JSON.stringify(value),{status,head
 
 function authService() {
   const sessions=new Map(),refreshes=new Map(),sent=[];
-  const state={outage:false,expired:false,alternate:false,refreshCount:0};
+  const state={outage:false,expired:false,alternate:false,refreshCount:0,userCount:0,userGate:null};
   const issue=(email,id)=>{
     const now=Math.floor(Date.now()/1000),exp=state.expired?now-30:now+3600;
     const user={id,email,email_confirmed_at:'2026-01-01T00:00:00Z',aud:'authenticated',role:'authenticated',app_metadata:{provider:'email'},user_metadata:{}};
@@ -44,6 +45,8 @@ function authService() {
     }
     const token=(request.headers.get('authorization')||'').replace(/^Bearer /,'');
     if(url.pathname==='/auth/v1/user') {
+      state.userCount++;
+      if(state.userGate)await state.userGate;
       if(state.outage)return asJson({msg:'Provider unavailable'},503);
       const user=sessions.get(token);
       return user?asJson(user):asJson({msg:'Session has expired',code:'session_not_found'},401);
@@ -135,5 +138,59 @@ test('expired access tokens refresh using server cookies without browser storage
     assert.equal(login.status,200,await login.clone().text());assert.ok(service.state.refreshCount>0);
     const session=await (await call('/session','GET',undefined,cookieOf(login))).json();
     assert.equal(session.slot,'yiting');assert.equal(session.authorized,true);
+  }finally{await mf.dispose();}
+});
+
+test('parallel Worker requests coalesce pending Auth checks without sharing response streams or caching identities',async()=>{
+  const service=authService(),{mf,call}=await runtime(service);
+  let release;
+  try {
+    const login=await call('/auth/verify-code','POST',{email:members.yiting,code:'123456'});
+    assert.equal(login.status,200);
+    const cookie=cookieOf(login),before=service.state.userCount;
+    service.state.userGate=new Promise(resolve=>{release=resolve;});
+    const requests=Array.from({length:12},()=>call('/session','GET',undefined,cookie));
+    // Let all Worker requests enter the shared pending check before releasing Auth.
+    for(let i=0;i<100&&service.state.userCount===before;i++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(service.state.userCount,before+1);
+    await new Promise(resolve=>setTimeout(resolve,100));
+    assert.equal(service.state.userCount,before+1);
+    release();service.state.userGate=null;
+    const sessions=await Promise.all(requests.map(async request=>{const response=await request;assert.equal(response.status,200);return response.json();}));
+    assert.ok(sessions.every(session=>session.authorized&&session.slot==='yiting'));
+    assert.equal(service.state.userCount,before+1);
+    assert.equal((await call('/auth/logout','POST',{},cookie)).status,200);
+    assert.equal((await call('/house','GET',undefined,cookie)).status,401);
+    assert.ok(service.state.userCount>before+1,'A completed Auth result must not outlive a revoked session');
+    assert.equal((await call('/media/unknown')).status,401);
+  }finally{release?.();await mf.dispose();}
+});
+
+test('Supabase production decoration preserves authenticated previews and keeps originals and denied requests private',async()=>{
+  const {mf,db,call}=await runtime(authService());
+  try {
+    const login=await call('/auth/verify-code','POST',{email:members.yiting,code:'123456'});
+    assert.equal(login.status,200);
+    const cookie=cookieOf(login),bucket=await mf.getR2Bucket('BUCKET');
+    const key='private/yiting/preview-fixture';
+    await db.prepare('INSERT INTO media (id,owner,entry_id,key,type,name) VALUES (?, ?, NULL, ?, ?, ?)').bind('preview-fixture','yiting',key,'image/jpeg','Fixture photo').run();
+    await bucket.put(key,Uint8Array.from([255,216,255,224,0,0,0,0]),{httpMetadata:{contentType:'image/jpeg'}});
+    for(const variant of ['thumb','display']) {
+      await bucket.put(privatePreviewKey(key,variant),Uint8Array.from([82,73,70,70,12,0,0,0,87,69,66,80,0,0,0,0,0,0,0,0]),{httpMetadata:{contentType:'image/webp'}});
+      const response=await call('/media/preview-fixture?variant='+variant,'GET',undefined,cookie);
+      assert.equal(response.status,200);
+      assert.equal(response.headers.get('Cache-Control'),'private, no-cache, must-revalidate');
+      assert.equal(response.headers.get('Vary'),'Cookie');
+      const cached=await call('/media/preview-fixture?variant='+variant,'GET',undefined,cookie,{'If-None-Match':response.headers.get('ETag')});
+      assert.equal(cached.status,304);
+      assert.equal(cached.headers.get('Cache-Control'),'private, no-cache, must-revalidate');
+      assert.equal(cached.headers.get('Vary'),'Cookie');
+      const denied=await call('/media/preview-fixture?variant='+variant,'GET',undefined,'',{'If-None-Match':response.headers.get('ETag')});
+      assert.equal(denied.status,401);
+      assert.equal(denied.headers.get('Cache-Control'),'private, no-store');
+      assert.equal(denied.headers.get('ETag'),null);
+    }
+    assert.equal((await call('/media/preview-fixture','GET',undefined,cookie)).headers.get('Cache-Control'),'private, no-store');
+    assert.equal((await call('/session','GET',undefined,cookie)).headers.get('Cache-Control'),'private, no-store');
   }finally{await mf.dispose();}
 });

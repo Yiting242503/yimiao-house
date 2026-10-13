@@ -205,6 +205,7 @@ const CircularCarousel = ({
   const firstIndex = clamp(Math.round(initialIndex), 0, Math.max(0, count - 1));
   const activeRef = useRef(firstIndex);
   const [active, setActive] = useState(firstIndex);
+  const [requestedSources, setRequestedSources] = useState(() => new Set());
   const [ready, setReady] = useState(false);
   const [dragging, setDragging] = useState(false);
   const readyRef = useRef(false);
@@ -278,50 +279,40 @@ const CircularCarousel = ({
   const itemsKey = JSON.stringify(incoming.map(item => [item.src, item.alt, item.title, item.subtitle]));
 
   useEffect(() => {
-    let cancelled = false;
     const next = incomingRef.current;
     const smooth = readyRef.current && next.length === listRef.current.length;
-    if (!smooth) {
-      setReady(false);
-      setLeaving(null);
-      setList(next);
-    }
-    const sources = next.slice(0, 16).map(item => item.src);
-    const load = src =>
-      new Promise(resolve => {
-        const image = new Image();
-        image.decoding = 'async';
-        image.onload = () => (image.decode ? image.decode().then(resolve, resolve) : resolve());
-        image.onerror = resolve;
-        image.src = src;
-      });
-    const timeout = new Promise(resolve => setTimeout(resolve, 2400));
-    Promise.race([Promise.all(sources.map(load)), timeout]).then(() => {
-      if (cancelled) return;
-      const state = stateRef.current;
-      if (smooth) {
-        const previous = listRef.current;
-        const s = settingsRef.current;
-        if (!s.reduced && previous !== next) {
-          setLeaving(current => ({
-            id: (current?.id || 0) + 1,
-            items: previous,
-            delays: previous.map((_, index) => (Math.abs(wrap(index * s.step + state.angle)) / 180) * SWAP_SPREAD)
-          }));
-        }
-        setList(next);
-        wakeRef.current();
-        return;
+    const state = stateRef.current;
+    if (smooth) {
+      const previous = listRef.current;
+      const s = settingsRef.current;
+      if (!s.reduced && previous !== next) {
+        setLeaving(current => ({
+          id: (current?.id || 0) + 1,
+          items: previous,
+          delays: previous.map((_, index) => (Math.abs(wrap(index * s.step + state.angle)) / 180) * SWAP_SPREAD)
+        }));
       }
+    } else {
+      setLeaving(null);
       state.introDone = false;
       state.intro = null;
-      setReady(true);
-      wakeRef.current();
-    });
-    return () => {
-      cancelled = true;
-    };
+    }
+    // Reveal each card as its photo arrives; a slow image must not hide the whole ring.
+    setList(next);
+    setReady(true);
+    wakeRef.current();
   }, [itemsKey]);
+
+  useEffect(() => {
+    const nearby = list.filter((_, index) => {
+      const distance = Math.abs(index - active);
+      return Math.min(distance, count - distance) <= 2;
+    }).map(item => item.src);
+    setRequestedSources(previous => {
+      if (nearby.every(src => previous.has(src))) return previous;
+      return new Set([...previous, ...nearby]);
+    });
+  }, [list, active, count]);
 
   useEffect(() => {
     if (!leaving) return undefined;
@@ -815,6 +806,8 @@ const CircularCarousel = ({
   const label = current ? current.title || current.alt || `回忆照片 ${active + 1}` : '';
 
   const renderTile = (item, tile, back, index) => {
+    const distance = Math.abs(index - active);
+    const loadPhoto = requestedSources.has(item.src) || Math.min(distance, count - distance) <= 2;
     const strip = back ? tile.total - 1 - tile.index : tile.index;
     const first = strip === 0;
     const last = strip === tile.total - 1;
@@ -846,15 +839,16 @@ const CircularCarousel = ({
           className="circular-carousel__frame"
           style={{ height: axis === 'x' ? size : cardH, borderRadius: frameRadius }}
         >
-          <img
+          {loadPhoto && <img
             className="circular-carousel__photo"
             src={item.src}
             alt=""
             draggable={false}
             decoding="async"
+            fetchPriority={index === active ? 'high' : 'auto'}
             style={photoStyle}
-          />
-          {gone && (
+          />}
+          {gone && requestedSources.has(gone.src) && (
             <img
               key={`leaving-${leaving.id}`}
               className="circular-carousel__photo circular-carousel__photo--leaving"

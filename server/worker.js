@@ -2,6 +2,7 @@ import { initialSettings, initialMeetings } from '../shared/seed.js';
 import { validDate, shanghaiToday } from '../shared/dates.js';
 import { entryMediaLimit } from '../shared/media-limits.js';
 import { createEmailAuth } from './email-auth.js';
+import { privateMediaResponse, privateMediaKeys, privatePreviewKey } from './private-media-response.js';
 
 const slots = ['yiting','haomiao'];
 const json = (value,status=200,headers={}) => new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store',...headers}});
@@ -16,6 +17,7 @@ const iso = () => new Date().toISOString();
 const PHOTO_LIMIT = 8*1024*1024;
 const VIDEO_LIMIT = 50*1024*1024;
 const UPLOAD_LIMIT = 51*1024*1024;
+const initialization = new WeakMap();
 const mp4Brands = new Set(['isom','iso2','iso3','iso4','iso5','iso6','mp41','mp42','avc1','M4V ','M4VH','M4VP','dash','MSNV']);
 
 function mediaType(bytes,fileSize) {
@@ -45,21 +47,21 @@ async function uploadForm(request) {
   catch(error) { if(oversized) fail('上传内容不能超过 51 MB',413); fail('上传内容格式不正确'); }
 }
 
-function byteRange(value,size) {
-  if(value===null) return null;
-  const match=/^bytes=(\d*)-(\d*)$/.exec(value.trim());
-  if(!match || (!match[1]&&!match[2]) || !size) return false;
-  let start,end;
-  if(!match[1]) {
-    const suffix=Number(match[2]);
-    if(!Number.isSafeInteger(suffix) || suffix<1) return false;
-    start=Math.max(0,size-suffix);end=size-1;
-  } else {
-    start=Number(match[1]);end=match[2]?Number(match[2]):size-1;
-    if(!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start>=size || end<start) return false;
-    end=Math.min(end,size-1);
-  }
-  return {offset:start,length:end-start+1,end};
+async function previewBytes(request,variant) {
+  const limit=variant==='thumb'?256*1024:1024*1024;
+  if(Number(request.headers.get('content-length')||0)>limit) fail('预览照片过大',413);
+  if(!request.body) fail('请选择 WebP 预览照片');
+  let size=0;
+  const limited=request.body.pipeThrough(new TransformStream({transform(chunk,controller) {
+    size+=chunk.byteLength;
+    if(size>limit) fail('预览照片过大',413);
+    controller.enqueue(chunk);
+  }}));
+  let bytes;
+  try { bytes=new Uint8Array(await new Response(limited).arrayBuffer()); }
+  catch(error) { if(error.status) throw error; fail('预览照片格式不正确'); }
+  if(bytes.length<12 || mediaType(bytes,bytes.length)!=='image/webp' || new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(4,true)!==bytes.length-8) fail('预览照片必须是 WebP 格式');
+  return bytes;
 }
 
 async function emailActor(env,auth,verified) {
@@ -123,12 +125,22 @@ async function loginRateLimit(request,env,email,action) {
 }
 
 async function initialize(env) {
-  // A seed marker and all initial data commit in one transaction, exactly once.
-  await env.DB.batch([
-    stmt(env,'INSERT OR IGNORE INTO settings (id,data) VALUES (?,?)','house',JSON.stringify(initialSettings)),
-    ...initialMeetings.map(m=>stmt(env,"INSERT OR IGNORE INTO meetings (id,start,end,title,place,story) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM markers WHERE id='initial-meetings-v1')",m.id,m.start,m.end,m.title,m.place,m.story)),
-    stmt(env,"INSERT OR IGNORE INTO markers (id) VALUES ('initial-meetings-v1')")
-  ]);
+  // Coalesce concurrent first requests without caching authorization or database state.
+  let pending=initialization.get(env.DB);
+  if(!pending) {
+    pending=(async()=>{
+      if(await one(env,"SELECT id FROM markers WHERE id='initial-meetings-v1'")) return;
+      // The seed marker and all initial data still commit in one transaction.
+      await env.DB.batch([
+        stmt(env,'INSERT OR IGNORE INTO settings (id,data) VALUES (?,?)','house',JSON.stringify(initialSettings)),
+        ...initialMeetings.map(m=>stmt(env,"INSERT OR IGNORE INTO meetings (id,start,end,title,place,story) SELECT ?,?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM markers WHERE id='initial-meetings-v1')",m.id,m.start,m.end,m.title,m.place,m.story)),
+        stmt(env,"INSERT OR IGNORE INTO markers (id) VALUES ('initial-meetings-v1')")
+      ]);
+    })();
+    initialization.set(env.DB,pending);
+  }
+  try { await pending; }
+  finally { if(initialization.get(env.DB)===pending) initialization.delete(env.DB); }
 }
 
 async function entryFor(env,id,actor) {
@@ -206,7 +218,8 @@ async function api(request,env,ctx,auth) {
   if(path==='/api/session' && request.method==='GET') return json(actor);
   if(!actor.authenticated) fail('请先登录小屋',401);
   if(!actor.authorized) fail('这个账号还没有小屋的钥匙',403);
-  await initialize(env);
+  // Existing media have no dependency on the initial meetings/settings write batch.
+  if(!path.startsWith('/api/media/')) await initialize(env);
   if(path==='/api/house' && request.method==='GET') return json(await snapshot(env,actor));
   if(path==='/api/album-video-order' && request.method==='PUT') {
     const data=await body(request);
@@ -336,23 +349,25 @@ async function api(request,env,ctx,auth) {
     if(file.purge_started_at || (file.deleted_at && file.owner!==actor.slot)) fail('照片不可访问',404);
     if(file.entry_id) await entryFor(env,file.entry_id,actor);
     else if(file.owner!==actor.slot) {
-      const settings=JSON.parse((await one(env,"SELECT data FROM settings WHERE id='house'")).data);
-      if(settings.roomArt!==file.id && !slots.some(s=>settings.people[s].avatar===file.id)) fail('照片不可访问',404);
+      const settings=JSON.parse((await one(env,"SELECT data FROM settings WHERE id='house'"))?.data||'{}');
+      if(settings.roomArt!==file.id && !slots.some(s=>settings.people?.[s]?.avatar===file.id)) fail('照片不可访问',404);
     }
-    const metadata=await env.BUCKET.head(file.key);
-    if(!metadata) fail('照片或视频暂时不可用，请重试',404);
-    const headers={'Content-Type':file.type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; media-src 'self'; sandbox",'Accept-Ranges':'bytes','Content-Length':String(metadata.size)};
-    const range=request.method==='HEAD'?null:byteRange(request.headers.get('range'),metadata.size);
-    if(range===false) return new Response(null,{status:416,headers:{...headers,'Content-Range':`bytes */${metadata.size}`,'Content-Length':'0'}});
-    if(range) {
-      headers['Content-Range']=`bytes ${range.offset}-${range.end}/${metadata.size}`;
-      headers['Content-Length']=String(range.length);
-    }
-    const status=range?206:200;
-    if(request.method==='HEAD') return new Response(null,{status,headers});
-    const object=await env.BUCKET.get(file.key,range?{range:{offset:range.offset,length:range.length}}:undefined);
-    if(!object) fail('照片或视频暂时不可用，请重试',404);
-    return new Response(object.body,{status,headers});
+    return privateMediaResponse(request,env.BUCKET,file);
+  }
+  const previewMatch=path.match(/^\/api\/media\/([^/]+)\/preview\/(thumb|display)$/);
+  if(previewMatch && request.method==='PUT') {
+    const file=await one(env,'SELECT * FROM media WHERE id=?',previewMatch[1]);
+    if(!file) fail('照片不存在',404);
+    if(file.owner!==actor.slot) fail('只有上传者可以生成预览照片',403);
+    if(!file.type.startsWith('image/')) fail('只有照片可以生成预览图');
+    if(file.purge_started_at) fail('这张照片正在永久删除，请稍后重试',409);
+    if(file.entry_id) await entryFor(env,file.entry_id,actor);
+    const bytes=await previewBytes(request,previewMatch[2]),key=privatePreviewKey(file.key,previewMatch[2]);
+    await env.BUCKET.put(key,bytes,{httpMetadata:{contentType:'image/webp'}});
+    // A purge can start while the upload streams. Never leave a recreated preview behind.
+    const available=await one(env,'SELECT id FROM media WHERE id=? AND owner=? AND purge_started_at IS NULL',file.id,actor.slot);
+    if(!available) { await env.BUCKET.delete(key); fail('照片状态已改变，请刷新后重试',409); }
+    return json({ok:true});
   }
   const mediaMutation=path.match(/^\/api\/media\/([^/]+)(?:\/(restore|permanent))?$/);
   if(mediaMutation && ((request.method==='DELETE' && mediaMutation[2]!=='restore') || (request.method==='POST' && mediaMutation[2]==='restore'))) {
@@ -366,7 +381,7 @@ async function api(request,env,ctx,auth) {
       // reuses it after either a storage failure or an interrupted request.
       const marked=await stmt(env,'UPDATE media SET purge_started_at=COALESCE(purge_started_at,?) WHERE id=? AND deleted_at IS NOT NULL RETURNING key',iso(),file.id).first();
       if(!marked) fail('照片状态已改变，请刷新后重试',409);
-      await env.BUCKET.delete(marked.key);
+      await env.BUCKET.delete(privateMediaKeys(marked.key));
       await stmt(env,'DELETE FROM media WHERE id=? AND deleted_at IS NOT NULL AND purge_started_at IS NOT NULL',file.id).run();
     } else {
       if(file.purge_started_at) fail('这张照片正在永久删除，请稍后重试',409);
@@ -433,7 +448,7 @@ async function api(request,env,ctx,auth) {
       }
       const files=await all(env,'SELECT key FROM media WHERE entry_id=?',entry.id);
       await env.DB.batch([stmt(env,'DELETE FROM comments WHERE entry_id=?',entry.id),stmt(env,'DELETE FROM hearts WHERE entry_id=?',entry.id),stmt(env,'DELETE FROM media WHERE entry_id=?',entry.id),stmt(env,'DELETE FROM entries WHERE id=?',entry.id)]);
-      if(files.length) ctx.waitUntil(env.BUCKET.delete(files.map(f=>f.key)).catch(e=>console.error('Media cleanup:',e.message)));
+      if(files.length) ctx.waitUntil(env.BUCKET.delete(files.flatMap(f=>privateMediaKeys(f.key))).catch(e=>console.error('Media cleanup:',e.message)));
       return json({ok:true});
     }
     if(request.method==='POST' && action==='heart') {
