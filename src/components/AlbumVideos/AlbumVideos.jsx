@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, GripVertical, LoaderCircle, MessageCircle, Video, X } from 'lucide-react';
 import { dateLabel } from '../../../shared/dates';
+import PrivateVideo from '../PrivateVideo.jsx';
+import { videoPlayback } from '../video-playback.js';
 import './AlbumVideos.css';
 
 export function orderedVideoIds(videos, savedOrder = []) {
@@ -46,7 +48,7 @@ export default function AlbumVideos({ videos = [], savedOrder = [], people, busy
   const enterSort = event => {
     if (!sortable || locked || editing || videos.length < 2) return;
     event?.preventDefault(); event?.stopPropagation();
-    players.current.forEach(player => player.pause());
+    players.current.forEach(player => videoPlayback.suspend(player));
     scopeAtStart.current = scopeKey; versionAtStart.current = refreshKey;
     setDraft([...canonicalIds]); setError(''); setAnnouncement('已进入排序模式，可以拖动视频或使用上移、下移按钮。');
   };
@@ -111,13 +113,13 @@ export default function AlbumVideos({ videos = [], savedOrder = [], people, busy
           onDoubleClickCapture={enterSort}
           onDragOverCapture={event => { if (!editing || locked || stale || !dragging.current) return; event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setDropId(id); }}
           onDropCapture={event => { if (!editing || locked || stale) return; event.preventDefault(); event.stopPropagation(); const sourceId = dragging.current; if (sourceId) move(sourceId, displayedIds.indexOf(id)); clearDrag(); }}>
-          <div className="album-video-stage"><video ref={player => { if (player) players.current.set(id, player); else players.current.delete(id); }} className="private-video album-video-player" src={`/api/media/${id}`} controls={!editing} playsInline preload="none" aria-label={name} tabIndex={editing ? -1 : undefined}/>
+          <div className="album-video-stage"><PrivateVideo ref={player => { if (player) players.current.set(id, player); else players.current.delete(id); }} className="album-video-player" src={`/api/media/${id}?variant=stream`} originalSrc={`/api/media/${id}`} controls={!editing} label={name} tabIndex={editing ? -1 : undefined}/>
             {editing && <div className="album-video-sort-overlay"><span className="album-video-position">{index + 1}</span><button type="button" className="album-video-drag-handle" aria-label={`拖动${name}调整顺序`} draggable={!locked && !stale} disabled={locked || stale}
               onDragStart={event => { if (locked || stale) { event.preventDefault(); return; } event.stopPropagation(); dragging.current = id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-album-video-id', id); setDraggingId(id); }}
               onDragEnd={clearDrag} onPointerDown={event => touchStart(event, id)} onPointerMove={touchMove} onPointerUp={touchEnd} onPointerCancel={() => { if (touchDragging.current) clearDrag(); }}
               onKeyDown={event => { const positions = { ArrowUp: index - 1, ArrowDown: index + 1, Home: 0, End: displayedIds.length - 1 }; if (positions[event.key] === undefined) return; event.preventDefault(); event.stopPropagation(); move(id, positions[event.key]); }}><GripVertical size={23}/><span>拖动排序</span></button></div>}
           </div>
-          <div className="meeting-video-caption"><div><p>{name}</p><span>{dateLabel(entry.date)} · {people?.[entry.author]?.name || ''}</span></div>{!editing && onOpen && <button type="button" className="icon-button" aria-label="打开视频与留言" disabled={locked} onClick={() => onOpen(entry, photoIndex)}><MessageCircle size={18}/></button>}</div>
+          <div className="meeting-video-caption"><div><p>{name}</p><span>{dateLabel(entry.date)} · {people?.[entry.author]?.name || ''}</span></div>{!editing && onOpen && <button type="button" className="icon-button" aria-label="打开视频与留言" disabled={locked} onClick={() => { videoPlayback.suspendAll(); onOpen(entry, photoIndex); }}><MessageCircle size={18}/></button>}</div>
           {editing && <div className="album-video-move-controls"><button type="button" className="button secondary" aria-label={`上移${name}`} disabled={locked || stale || index === 0} onClick={() => move(id, index - 1)}><ArrowUp size={16}/>上移</button><button type="button" className="button secondary" aria-label={`下移${name}`} disabled={locked || stale || index === displayedIds.length - 1} onClick={() => move(id, index + 1)}><ArrowDown size={16}/>下移</button></div>}
         </article>;
       })}

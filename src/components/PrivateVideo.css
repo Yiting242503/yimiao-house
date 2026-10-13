@@ -1,0 +1,4 @@
+.private-video-stage{position:relative;width:100%;min-width:0}
+.private-video-resume{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:7px;min-height:44px;padding:10px 15px;border:1px solid #fff7;border-radius:5px;color:#fff;background:#252822e8;font-size:13px;white-space:nowrap}
+.private-video-quality{display:block;margin:7px 0 0 auto;min-height:30px;padding:3px 5px;color:var(--muted);font-size:11px;background:transparent;border:0}
+.private-video-quality:focus-visible,.private-video-resume:focus-visible{outline:2px solid var(--sage,#6d7b61);outline-offset:3px}

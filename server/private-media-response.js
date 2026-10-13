@@ -1,11 +1,11 @@
-const variants = new Set(['thumb', 'display']);
+const imageVariants = new Set(['thumb', 'display']);
 
 export function privateMediaKeys(key) {
-  return [key, privatePreviewKey(key, 'thumb'), privatePreviewKey(key, 'display')];
+  return [key, privatePreviewKey(key, 'thumb'), privatePreviewKey(key, 'display'), privatePreviewKey(key, 'stream')];
 }
 
 export function privatePreviewKey(key, variant) {
-  return `${key}.preview-v1-${variant}.webp`;
+  return `${key}.preview-v1-${variant}.${variant === 'stream' ? 'mp4' : 'webp'}`;
 }
 
 function byteRange(value, size) {
@@ -39,13 +39,15 @@ function missing() {
 // Call only after the current identity and media record have been authorized.
 // Browser revalidation always returns through those checks; no shared cache stores bytes.
 export async function privateMediaResponse(request, bucket, file) {
-  const variant = new URL(request.url).searchParams.get('variant');
-  if (variant !== null && !variants.has(variant)) {
-    throw Object.assign(new Error('照片尺寸不正确'), {status: 400});
+  const parameters = new URL(request.url).searchParams;
+  const variant = parameters.get('variant');
+  const imagePreview = variant !== null && file.type.startsWith('image/') && imageVariants.has(variant);
+  const videoStream = variant === 'stream' && file.type.startsWith('video/');
+  if (parameters.getAll('variant').length > 1 || (variant !== null && !imagePreview && !videoStream)) {
+    throw Object.assign(new Error('媒体版本不正确'), {status: 400});
   }
-  const preview = !!variant && file.type.startsWith('image/');
-  let key = preview ? privatePreviewKey(file.key, variant) : file.key;
-  let type = preview ? 'image/webp' : file.type;
+  let key = imagePreview || videoStream ? privatePreviewKey(file.key, variant) : file.key;
+  let type = imagePreview ? 'image/webp' : videoStream ? 'video/mp4' : file.type;
   const load = async method => {
     let object = await bucket[method](key);
     if (!object && key !== file.key) {
@@ -55,13 +57,13 @@ export async function privateMediaResponse(request, bucket, file) {
     if (!object) missing();
     return object;
   };
-  const conditional = preview ? request.headers.get('if-none-match') : null;
+  const conditional = imagePreview ? request.headers.get('if-none-match') : null;
   const needsMetadata = request.method === 'HEAD' || request.headers.has('range') || conditional !== null;
   // An ordinary photo GET needs one object request rather than HEAD followed by GET.
   const metadata = await load(needsMetadata ? 'head' : 'get');
   const headers = {
     'Content-Type': type,
-    'Cache-Control': preview ? 'private, no-cache, must-revalidate' : 'private, no-store',
+    'Cache-Control': imagePreview ? 'private, no-cache, must-revalidate' : 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "default-src 'none'; media-src 'self'; sandbox",
     'Accept-Ranges': 'bytes',
@@ -69,8 +71,8 @@ export async function privateMediaResponse(request, bucket, file) {
     'Vary': 'Cookie'
   };
   const etag = metadata.httpEtag || (metadata.etag ? `"${metadata.etag}"` : null);
-  if (preview && etag) headers.ETag = etag;
-  if (preview && notModified(conditional, etag)) {
+  if (imagePreview && etag) headers.ETag = etag;
+  if (imagePreview && notModified(conditional, etag)) {
     delete headers['Content-Length'];
     return new Response(null, {status: 304, headers});
   }
