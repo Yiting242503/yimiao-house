@@ -2,9 +2,9 @@
 
 把想念，放进同一个家。
 
-[进入在线小屋](https://yimiao-little-home.cool-otter-0098.chatgpt.site)
+[进入在线小屋](https://yimiao-house-yiting242503.pages.dev)
 
-这个仓库公开小屋的程序源码，并通过 GitHub Pages 提供网页入口。入口的「进入小屋」按钮会打开已有的完整网站。登录、相册、日记、信件和上传仍由原网站的服务端处理。
+这个仓库公开小屋的程序源码，并通过 GitHub Pages 提供网页入口。入口的「进入小屋」按钮会打开部署在 Cloudflare Pages 的完整网站。邮箱登录、相册、日记、信件和上传由内部绑定的 Cloudflare Worker 处理，私人回忆保存在 D1 数据库和私有 R2 存储中。
 
 源码中的成员资料和见面日期是虚构示例，不包含线上或本机的私人回忆、照片、视频、数据库、密钥或原项目的 Git 历史。公开仓库不会更改在线小屋中的内容和账号权限。
 
@@ -38,6 +38,8 @@ npm test
 以 `wrangler.standalone.example.jsonc` 为模板配置自己的 Worker、D1 和私有 R2，并应用 `drizzle/` 中的数据库迁移。实际配置保存为被忽略的 `wrangler.standalone.jsonc`。
 
 服务端需配置 `AUTH_PROVIDER=supabase`、`SUPABASE_URL`、`SUPABASE_PUBLISHABLE_KEY` 和 `MEMBER_EMAILS`，并配置验证码邮件服务及两个授权账号。示例见 `.env.example`；不要把服务端配置写入 `VITE_*` 变量。正式环境不启用本机体验账号。
+
+也可使用 Cloudflare Pages 提供完整网站的同源入口：将 `dist/client/` 和 `cloudflare-pages/` 中的 `_worker.js`、`_routes.json` 复制到 `dist/pages/`。以 `cloudflare-pages/wrangler.example.jsonc` 为模板创建被忽略的 `cloudflare-pages/wrangler.jsonc`，填写自己的 Pages 项目名和已部署的正式 Worker 名，再从 `cloudflare-pages/` 目录运行 Wrangler Pages 发布。`HOUSE` 内部服务绑定将 `/api/*` 请求交给正式 Worker，账号权限和私有存储检查仍在 Worker 中执行。
 
 使用 Sites 部署时，复制 `.openai/hosting.example.json` 为被忽略的 `.openai/hosting.json`，再填写自己新建的 Site 标识。此公开副本没有绑定原网站的部署身份。
 
