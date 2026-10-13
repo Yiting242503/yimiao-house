@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import './HoloCard.css';
+import useCompactRendering from '../useCompactRendering.js';
 
 // React Bits HoloCard shader, adapted for private photo viewers and reduced motion.
 const PRESETS = ['bursts', 'stars', 'shards', 'cosmos', 'rainbow', 'swirl', 'glitter', 'gold'];
@@ -345,6 +346,8 @@ export default function HoloCard({
   const [contextVersion, setContextVersion] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [active, setActive] = useState(false);
+  const compact = useCompactRendering();
+  const [gpuEnabled, setGpuEnabled] = useState(!compact);
   const flippable = Boolean(backImage);
 
   imageRef.current = image;
@@ -367,6 +370,7 @@ export default function HoloCard({
   useEffect(() => { loadRef.current?.(image); }, [image]);
 
   useEffect(() => {
+    if (compact && !gpuEnabled) return undefined;
     const root = rootRef.current;
     const rotor = rotorRef.current;
     const canvas = canvasRef.current;
@@ -507,7 +511,7 @@ export default function HoloCard({
     const tick = now => {
       raf = 0;
       if (!alive || !visible || document.hidden || lost || !textureReady) return;
-      if (now - lastFrame < FRAME_INTERVAL) {
+      if (now - lastFrame < (compact ? 1000 / 24 : FRAME_INTERVAL)) {
         raf = requestAnimationFrame(tick);
         return;
       }
@@ -588,7 +592,7 @@ export default function HoloCard({
     const resize = () => {
       const cssWidth = Math.max(1, canvas.clientWidth);
       const cssHeight = Math.max(1, canvas.clientHeight);
-      const dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(PIXEL_BUDGET / (cssWidth * cssHeight)));
+      const dpr = Math.min(window.devicePixelRatio || 1, compact ? 1.25 : 2, Math.sqrt((compact ? 320000 : PIXEL_BUDGET) / (cssWidth * cssHeight)));
       const w = Math.max(1, Math.round(cssWidth * dpr));
       const h = Math.max(1, Math.round(cssHeight * dpr));
       if (canvas.width !== w || canvas.height !== h) {
@@ -617,7 +621,7 @@ export default function HoloCard({
           gl.bindTexture(gl.TEXTURE_2D, texture);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
           gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-          const limit = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), 2048);
+          const limit = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), compact ? 1280 : 2048);
           let art = img;
           if (img.naturalWidth > limit || img.naturalHeight > limit) {
             const factor = limit / Math.max(img.naturalWidth, img.naturalHeight);
@@ -711,7 +715,7 @@ export default function HoloCard({
         }, 0);
       }
     };
-  }, [contextVersion]);
+  }, [contextVersion, compact, gpuEnabled]);
 
   const track = event => {
     if (event.pointerType === 'touch' && event.type === 'pointermove' && !event.buttons) return;
@@ -761,6 +765,7 @@ export default function HoloCard({
       aria-pressed={flippable ? flipped : undefined}
       data-ready={ready && renderedSource === image ? '' : undefined}
       data-renderer={renderer}
+      data-compact={compact ? '' : undefined}
       data-motion={reduced ? 'reduced' : 'full'}
       data-hover-only={hoverOnly ? '' : undefined}
       data-active={active ? '' : undefined}
@@ -787,6 +792,8 @@ export default function HoloCard({
             if (event.currentTarget.getAttribute('src') !== imageRef.current) return;
             const { naturalWidth, naturalHeight } = event.currentTarget;
             if (naturalWidth && naturalHeight) setRatio(naturalWidth / naturalHeight);
+            // The native image paints first on slower mobile GPUs; then enable the foil.
+            if (compact && !gpuEnabled) requestAnimationFrame(() => requestAnimationFrame(() => setGpuEnabled(true)));
           }} /> : null}
           <canvas ref={canvasRef} aria-hidden="true" />
         </div>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import './CircularCarousel.css';
+import useCompactRendering from '../useCompactRendering.js';
 
 const EMPTY_ITEMS = [];
 
@@ -159,6 +160,7 @@ const CircularCarousel = ({
   const tiltValue = tilt ?? layout.tilt;
   const curveValue = layout.billboard ? 0 : clamp(curve ?? layout.curve, 0, 1);
   const reduced = usePrefersReducedMotion();
+  const compact = useCompactRendering();
 
   const cardW = Math.max(40, cardWidth);
   const cardH = cardW / clamp(aspectRatio, 0.2, 5);
@@ -174,7 +176,7 @@ const CircularCarousel = ({
   }, [count, along, gap, curveValue, layout.spread]);
 
   const tiles = useMemo(() => {
-    const total = curveValue > 0.001 ? TILES : 1;
+    const total = curveValue > 0.001 ? compact ? 2 : TILES : 1;
     const length = along / total;
     const bend = curveValue > 0.001 ? radius / curveValue : 0;
     return Array.from({ length: total }, (_, index) => {
@@ -192,7 +194,7 @@ const CircularCarousel = ({
           : `translate3d(${shift}px, 0px, ${depth}px) rotateY(${turn}deg)`;
       return { index, total, start, end, size: end - start, move };
     });
-  }, [along, axis, curveValue, layout.inward, radius]);
+  }, [along, axis, curveValue, layout.inward, radius, compact]);
 
   const rootRef = useRef(null);
   const stageRef = useRef(null);
@@ -206,6 +208,8 @@ const CircularCarousel = ({
   const activeRef = useRef(firstIndex);
   const [active, setActive] = useState(firstIndex);
   const [requestedSources, setRequestedSources] = useState(() => new Set());
+  const [loadedSources, setLoadedSources] = useState(() => new Set());
+  const [frontPainted, setFrontPainted] = useState(false);
   const [ready, setReady] = useState(false);
   const [dragging, setDragging] = useState(false);
   const readyRef = useRef(false);
@@ -244,7 +248,7 @@ const CircularCarousel = ({
     perspective: layout.inward ? radius : (perspective ?? layout.perspective),
     cardW,
     cardH,
-    intro: reduced ? 'none' : intro in INTRO_LENGTH ? intro : 'rise',
+    intro: reduced || compact ? 'none' : intro in INTRO_LENGTH ? intro : 'rise',
     autoplay: reduced ? 'off' : autoplay,
     speed,
     interval: Math.max(0.5, interval),
@@ -256,7 +260,8 @@ const CircularCarousel = ({
     stretch: reduced ? 0 : clamp(stretch, 0, 1),
     depthFade: clamp(depthFade, 0, 1),
     captions,
-    reduced
+    reduced,
+    compact
   };
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -280,6 +285,7 @@ const CircularCarousel = ({
 
   useEffect(() => {
     const next = incomingRef.current;
+    setFrontPainted(false);
     const smooth = readyRef.current && next.length === listRef.current.length;
     const state = stateRef.current;
     if (smooth) {
@@ -304,15 +310,16 @@ const CircularCarousel = ({
   }, [itemsKey]);
 
   useEffect(() => {
+    if (compact && !loadedSources.has(list[active]?.src)) return;
     const nearby = list.filter((_, index) => {
       const distance = Math.abs(index - active);
-      return Math.min(distance, count - distance) <= 2;
+      return Math.min(distance, count - distance) <= (compact ? 1 : 2);
     }).map(item => item.src);
     setRequestedSources(previous => {
       if (nearby.every(src => previous.has(src))) return previous;
       return new Set([...previous, ...nearby]);
     });
-  }, [list, active, count]);
+  }, [list, active, count, compact, loadedSources]);
 
   useEffect(() => {
     if (!leaving) return undefined;
@@ -539,7 +546,7 @@ const CircularCarousel = ({
 
         const world = wrap(base + angle);
         const facing = Math.cos(world * TO_RAD);
-        if (s.layout.inward) card.style.visibility = Math.abs(world) > 86 ? 'hidden' : '';
+        card.style.visibility = (s.layout.inward && Math.abs(world) > 86) || (s.compact && Math.abs(world) > 100) ? 'hidden' : '';
         const fade = s.depthFade * Math.pow((1 - facing) / 2, 1.25);
         card.style.setProperty('--cc-depth', fade.toFixed(3));
       }
@@ -556,6 +563,10 @@ const CircularCarousel = ({
     const frame = now => {
       raf = 0;
       const s = settingsRef.current;
+      if (s.compact && state.last && now - state.last < 1000 / 30) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
       const dt = state.last ? Math.min((now - state.last) / 1000, 0.05) : 1 / 60;
       state.last = now;
       const busy = advance(s, dt, now);
@@ -807,7 +818,8 @@ const CircularCarousel = ({
 
   const renderTile = (item, tile, back, index) => {
     const distance = Math.abs(index - active);
-    const loadPhoto = requestedSources.has(item.src) || Math.min(distance, count - distance) <= 2;
+    const near = Math.min(distance, count - distance) <= (compact ? 1 : 2);
+    const loadPhoto = compact ? index === active || (near && loadedSources.has(current?.src)) : requestedSources.has(item.src) || near;
     const strip = back ? tile.total - 1 - tile.index : tile.index;
     const first = strip === 0;
     const last = strip === tile.total - 1;
@@ -846,6 +858,7 @@ const CircularCarousel = ({
             draggable={false}
             decoding="async"
             fetchPriority={index === active ? 'high' : 'auto'}
+            onLoad={tile.index === 0 && !back ? () => setLoadedSources(previous => previous.has(item.src) ? previous : new Set([...previous, item.src])) : undefined}
             style={photoStyle}
           />}
           {gone && requestedSources.has(gone.src) && (
@@ -885,6 +898,8 @@ const CircularCarousel = ({
       data-axis={axis}
       data-shape={shape}
       data-ready={ready ? '' : undefined}
+      data-compact={compact ? '' : undefined}
+      data-front-painted={frontPainted ? '' : undefined}
       data-draggable={draggable ? '' : undefined}
       data-dragging={dragging ? '' : undefined}
       onPointerDown={handlePointerDown}
@@ -896,6 +911,7 @@ const CircularCarousel = ({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
+      {compact && !frontPainted && current && <img className="circular-carousel__first-photo" src={current.src} alt="" draggable={false} decoding="async" fetchPriority="high" onLoad={() => requestAnimationFrame(() => requestAnimationFrame(() => setFrontPainted(true)))}/>}
       <div className="circular-carousel__view">
         <div ref={stageRef} className="circular-carousel__stage">
           <div ref={cameraRef} className="circular-carousel__camera">
@@ -912,8 +928,8 @@ const CircularCarousel = ({
                   aria-roledescription="照片"
                   aria-label={`${item.title || item.alt || `回忆照片 ${index + 1}`}，第 ${index + 1} 张，共 ${count} 张`}
                 >
-                  {tiles.map(tile => renderTile(item, tile, false, index))}
-                  {layout.backfaces && tiles.map(tile => renderTile(item, tile, true, index))}
+                  {(!compact || Math.min(Math.abs(index-active),count-Math.abs(index-active))<=1) && tiles.map(tile => renderTile(item, tile, false, index))}
+                  {!compact && layout.backfaces && tiles.map(tile => renderTile(item, tile, true, index))}
                 </div>
               ))}
             </div>

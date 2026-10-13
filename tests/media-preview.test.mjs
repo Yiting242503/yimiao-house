@@ -90,5 +90,24 @@ test('private WebP previews preserve original files, ownership, draft/trash boun
       for(let attempts=0;attempts<50&&await bucket.head(privatePreviewKey(draftRow.key,'thumb'));attempts++)await new Promise(resolve=>setTimeout(resolve,10));
       for(const key of [draftRow.key,privatePreviewKey(draftRow.key,'thumb'),privatePreviewKey(draftRow.key,'display')])assert.equal(await bucket.head(key),null);
     });
+    await t.test('the batched house snapshot retains database ordering and hides empty recycled albums',async()=>{
+      const addEntry=async(id,kind,created)=>db.prepare('INSERT INTO entries (id,kind,author,text,mood,date,status,created,updated) VALUES (?,?,?, ?,?,?,?, ?,?)').bind(id,kind,'yiting','ordering fixture','','2026-10-13','published',created,created).run();
+      await addEntry('order-old','diary','2026-10-12T00:00:00.000Z');
+      await addEntry('order-new','diary','2026-10-13T00:00:00.000Z');
+      await addEntry('order-trash','memory','2026-10-14T00:00:00.000Z');
+      for(const id of ['order-z-image','order-a-image'])await db.prepare('INSERT INTO media (id,owner,entry_id,key,type,name) VALUES (?,?,?,?,?,?)').bind(id,'yiting','order-new','private/yiting/'+id,'image/jpeg',id).run();
+      for(const id of ['order-trash-first','order-trash-second'])await db.prepare('INSERT INTO media (id,owner,entry_id,key,type,name,deleted_at) VALUES (?,?,?,?,?,?,?)').bind(id,'yiting','order-trash','private/yiting/'+id,'image/jpeg',id,'2026-10-13T00:00:00.000Z').run();
+      for(const [id,created] of [['comment-new','2026-10-13'],['comment-old','2026-10-12']])await db.prepare('INSERT INTO comments (id,entry_id,author,text,created) VALUES (?,?,?,?,?)').bind(id,'order-new','yiting',id,created).run();
+      for(const [id,date] of [['order-meeting-old','2035-01-01'],['order-meeting-new','2036-01-01']])await db.prepare('INSERT INTO meetings (id,start,end,title,place,story) VALUES (?,?,?,?,?,?)').bind(id,date,date,id,'','').run();
+      for(const [id,created] of [['order-miss-old','2026-10-12'],['order-miss-new','2026-10-13']])await db.prepare('INSERT INTO misses (id,author,created) VALUES (?,?,?)').bind(id,'yiting',created).run();
+      const response=await request('/house');assert.equal(response.status,200);const house=await response.json();
+      assert.deepEqual(house.entries.map(entry=>entry.id),['order-new','order-old']);
+      assert.deepEqual(house.entries[0].media.map(file=>file.id),['order-z-image','order-a-image']);
+      assert.deepEqual(house.entries[0].comments.map(comment=>comment.id),['comment-old','comment-new']);
+      assert.deepEqual(house.meetings.slice(0,2).map(meeting=>meeting.id),['order-meeting-new','order-meeting-old']);
+      assert.deepEqual(house.misses.map(miss=>miss.id),['order-miss-new','order-miss-old']);
+      assert.deepEqual(house.recycledMedia.map(file=>file.id),['order-trash-second','order-trash-first']);
+      const peer=await (await request('/house',{id:memberB})).json();assert.deepEqual(peer.entries.map(entry=>entry.id),['order-new','order-old']);assert.deepEqual(peer.recycledMedia,[]);
+    });
   } finally {await runtime.dispose();}
 });

@@ -73,6 +73,7 @@ async function emailActor(env,auth,verified) {
   if(!slot) return {...flags,userId,authorized:false,authenticated:true};
   const bound=await one(env,'SELECT user_id FROM members WHERE slot=?',slot);
   if(bound && bound.user_id!==userId) fail('账号绑定已变更，请由管理员检查',403);
+  if(bound) return {...flags,slot,userId,authorized:true,authenticated:true};
   await stmt(env,'INSERT OR IGNORE INTO members (slot,user_id) VALUES (?,?)',slot,userId).run();
   const pinned=await one(env,'SELECT user_id FROM members WHERE slot=?',slot);
   if(pinned?.user_id!==userId) fail('此身份已经绑定到另一个账号，请由管理员检查',403);
@@ -99,6 +100,7 @@ async function identity(request,env,auth) {
   if(!slot) return {authorized:false,authenticated:true,userId,localPreview:false};
   const bound=await one(env,'SELECT user_id FROM members WHERE slot=?',slot);
   if(bound && bound.user_id!==userId) fail('账号绑定已变更，请由管理员检查',403);
+  if(bound) return {slot,userId,authorized:true,authenticated:true,localPreview:false};
   await stmt(env,'INSERT OR IGNORE INTO members (slot,user_id) VALUES (?,?)',slot,userId).run();
   const pinned=await one(env,'SELECT user_id FROM members WHERE slot=?',slot);
   if(pinned?.user_id!==userId) fail('此身份已经绑定到另一个账号，请由管理员检查',403);
@@ -165,13 +167,19 @@ function mutationGuard(request,env) {
 }
 
 async function snapshot(env,actor) {
-  const settings=JSON.parse((await one(env,"SELECT data FROM settings WHERE id='house'")).data);
-  const entries=await all(env,"SELECT e.* FROM entries e WHERE (e.status<>'draft' OR e.author=?) AND (e.kind<>'memory' OR EXISTS (SELECT 1 FROM media m WHERE m.entry_id=e.id AND m.deleted_at IS NULL AND m.purge_started_at IS NULL)) ORDER BY e.created DESC LIMIT 250",actor.slot);
-  const media=await all(env,"SELECT m.id,m.entry_id,m.type,m.name FROM media m JOIN entries e ON m.entry_id=e.id WHERE m.deleted_at IS NULL AND m.purge_started_at IS NULL AND (e.status<>'draft' OR e.author=?) ORDER BY m.rowid",actor.slot);
-  const recycledMedia=await all(env,"SELECT m.id,m.type,m.name,m.deleted_at,m.purge_started_at,m.entry_id,e.text AS entry_text,e.date,e.meeting_id,t.title AS meeting_title FROM media m JOIN entries e ON m.entry_id=e.id LEFT JOIN meetings t ON t.id=e.meeting_id WHERE m.owner=? AND e.author=? AND e.kind='memory' AND m.deleted_at IS NOT NULL ORDER BY m.deleted_at DESC,m.rowid DESC",actor.slot,actor.slot);
-  const comments=await all(env,"SELECT c.* FROM comments c JOIN entries e ON c.entry_id=e.id WHERE e.status<>'draft' OR e.author=? ORDER BY c.created",actor.slot);
-  const hearts=await all(env,"SELECT h.* FROM hearts h JOIN entries e ON h.entry_id=e.id WHERE e.status<>'draft' OR e.author=?",actor.slot);
-  return {settings,meetings:await all(env,'SELECT * FROM meetings ORDER BY start DESC'),entries:entries.map(e=>({...e,media:media.filter(m=>m.entry_id===e.id),comments:comments.filter(c=>c.entry_id===e.id),hearts:hearts.filter(h=>h.entry_id===e.id)})),recycledMedia,misses:await all(env,'SELECT * FROM misses ORDER BY created DESC LIMIT 50'),session:actor};
+  // Read a consistent snapshot in one D1 round trip instead of eight serial calls.
+  const [settingsRows,entryRows,mediaRows,recycledRows,commentRows,heartRows,meetingRows,missRows]=await env.DB.batch([
+    stmt(env,"SELECT data FROM settings WHERE id='house'"),
+    stmt(env,"SELECT e.* FROM entries e WHERE (e.status<>'draft' OR e.author=?) AND (e.kind<>'memory' OR EXISTS (SELECT 1 FROM media m WHERE m.entry_id=e.id AND m.deleted_at IS NULL AND m.purge_started_at IS NULL)) ORDER BY e.created DESC LIMIT 250",actor.slot),
+    stmt(env,"SELECT m.id,m.entry_id,m.type,m.name FROM media m JOIN entries e ON m.entry_id=e.id WHERE m.deleted_at IS NULL AND m.purge_started_at IS NULL AND (e.status<>'draft' OR e.author=?) ORDER BY m.rowid",actor.slot),
+    stmt(env,"SELECT m.id,m.type,m.name,m.deleted_at,m.purge_started_at,m.entry_id,e.text AS entry_text,e.date,e.meeting_id,t.title AS meeting_title FROM media m JOIN entries e ON m.entry_id=e.id LEFT JOIN meetings t ON t.id=e.meeting_id WHERE m.owner=? AND e.author=? AND e.kind='memory' AND m.deleted_at IS NOT NULL ORDER BY m.deleted_at DESC,m.rowid DESC",actor.slot,actor.slot),
+    stmt(env,"SELECT c.* FROM comments c JOIN entries e ON c.entry_id=e.id WHERE e.status<>'draft' OR e.author=? ORDER BY c.created",actor.slot),
+    stmt(env,"SELECT h.* FROM hearts h JOIN entries e ON h.entry_id=e.id WHERE e.status<>'draft' OR e.author=?",actor.slot),
+    stmt(env,'SELECT * FROM meetings ORDER BY start DESC'),
+    stmt(env,'SELECT * FROM misses ORDER BY created DESC LIMIT 50')
+  ]);
+  const settings=JSON.parse(settingsRows.results[0].data),entries=entryRows.results,media=mediaRows.results,comments=commentRows.results,hearts=heartRows.results;
+  return {settings,meetings:meetingRows.results,entries:entries.map(e=>({...e,media:media.filter(m=>m.entry_id===e.id),comments:comments.filter(c=>c.entry_id===e.id),hearts:hearts.filter(h=>h.entry_id===e.id)})),recycledMedia:recycledRows.results,misses:missRows.results,session:actor};
 }
 
 async function api(request,env,ctx,auth) {
@@ -344,10 +352,12 @@ async function api(request,env,ctx,auth) {
   }
   const mediaMatch=path.match(/^\/api\/media\/([^/]+)$/);
   if(mediaMatch && ['GET','HEAD'].includes(request.method)) {
-    const file=await one(env,'SELECT * FROM media WHERE id=?',mediaMatch[1]);
+    const file=await one(env,'SELECT m.*,e.id AS linked_entry_id,e.author AS entry_author,e.status AS entry_status FROM media m LEFT JOIN entries e ON e.id=m.entry_id WHERE m.id=?',mediaMatch[1]);
     if(!file) fail('照片不存在',404);
     if(file.purge_started_at || (file.deleted_at && file.owner!==actor.slot)) fail('照片不可访问',404);
-    if(file.entry_id) await entryFor(env,file.entry_id,actor);
+    if(file.entry_id) {
+      if(!file.linked_entry_id || (file.entry_status==='draft' && file.entry_author!==actor.slot)) fail('这条内容不可访问',404);
+    }
     else if(file.owner!==actor.slot) {
       const settings=JSON.parse((await one(env,"SELECT data FROM settings WHERE id='house'"))?.data||'{}');
       if(settings.roomArt!==file.id && !slots.some(s=>settings.people?.[s]?.avatar===file.id)) fail('照片不可访问',404);

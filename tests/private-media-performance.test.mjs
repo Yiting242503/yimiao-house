@@ -66,7 +66,7 @@ function fakeDatabase({marker=true,media=null}={}) {
     async first(){calls.push(['first',sql]);
       if(sql.includes('SELECT user_id FROM members'))return {user_id:'member-A'};
       if(sql.includes('SELECT id FROM markers'))return marker?{id:'initial-meetings-v1'}:null;
-      if(sql.includes('SELECT * FROM media'))return media;
+      if(sql.includes('SELECT * FROM media')||sql.includes('SELECT m.*,e.id AS linked_entry_id'))return media;
       if(sql.includes("SELECT data FROM settings"))return {data:JSON.stringify({roomArt:'',people:{}})};
       return null;
     },async run(){calls.push(['run',sql]);return {meta:{changes:0}};},async all(){calls.push(['all',sql]);return {results:[]};}

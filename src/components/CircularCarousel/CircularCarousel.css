@@ -58,6 +58,18 @@
   opacity: 1;
 }
 
+.circular-carousel[data-compact] .circular-carousel__stage { transition: none; }
+.circular-carousel__first-photo {
+  position: absolute;
+  left: 50%;top: calc(50% - 38px);
+  transform: translate(-50%, -50%);
+  width: min(250px, 80%);
+  aspect-ratio: 1.15;
+  object-fit: cover;
+  border-radius: var(--cc-radius);
+}
+.circular-carousel[data-compact]:not([data-front-painted]) .circular-carousel__view { visibility: hidden; }
+
 .circular-carousel__camera,
 .circular-carousel__ring,
 .circular-carousel__card {

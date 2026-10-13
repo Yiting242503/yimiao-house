@@ -11,7 +11,7 @@ class CrystalBoundary extends Component {
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export default function TitleCrystal() {
+export default function TitleCrystal({active=true}) {
   const host = useRef(null);
   const [enabled, setEnabled] = useState(false);
   const [ready, setReady] = useState(false);
@@ -39,8 +39,8 @@ export default function TitleCrystal() {
     };
   }, []);
 
-  return <span ref={host} className="title-crystal" aria-hidden="true" data-crystal-state={failed ? 'fallback' : ready ? 'ready' : 'loading'}>
-    {enabled && !failed && <CrystalBoundary onFailure={onFailure}><Suspense fallback={null}><CrystalizedBall preset="plasma" theme="dark" color="#C7955E" size={0.74} crackle={0.85} glow={1.05} particleCount={compact ? 1400 : 2400} fill={0.56} hoverStrength={0.7} paused={reduced} intro={!reduced} interactive={!reduced} maxDpr={compact ? 1.5 : 2} maxFps={30} onReady={onReady} onError={onFailure}/></Suspense></CrystalBoundary>}
+  return <span ref={host} className="title-crystal" aria-hidden="true" data-crystal-state={failed ? 'fallback' : ready ? 'ready' : 'loading'} data-active={active?'':undefined}>
+    {enabled && !failed && <CrystalBoundary onFailure={onFailure}><Suspense fallback={null}><CrystalizedBall preset="plasma" theme="dark" color="#C7955E" size={0.74} crackle={0.85} glow={1.05} particleCount={compact ? 1400 : 2400} fill={0.56} hoverStrength={0.7} paused={reduced||!active} intro={!reduced&&active} interactive={!reduced&&active} maxDpr={compact ? 1.5 : 2} maxFps={30} onReady={onReady} onError={onFailure}/></Suspense></CrystalBoundary>}
     {(!ready || failed) && <Sparkles className="title-crystal-fallback" size={34} strokeWidth={1.2}/>}
   </span>;
 }
