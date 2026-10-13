@@ -1,0 +1,8 @@
+{
+  "name": "yimiao-house-local",
+  "main": "server/worker.js",
+  "compatibility_date": "2026-10-01",
+  "vars": { "LOCAL_PREVIEW": "true" },
+  "d1_databases": [{ "binding": "DB", "database_name": "yimiao-local", "database_id": "00000000-0000-0000-0000-000000000001", "migrations_dir": "drizzle" }],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "yimiao-local-media" }]
+}

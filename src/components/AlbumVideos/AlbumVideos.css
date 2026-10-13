@@ -1,0 +1,19 @@
+.album-video-sort-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-4px 0 18px;flex-wrap:wrap}
+.album-video-sort-toolbar p{font-size:12px;line-height:1.8;color:var(--muted)}
+.album-video-sort-toolbar>.button{font-size:12px;padding:9px 12px;min-height:40px}
+.album-video-stage{position:relative;isolation:isolate}
+.album-video-player{display:block;width:100%;max-height:50dvh;border-radius:4px}
+.album-video-item{min-width:0;transition:opacity .15s}
+.album-video-sort-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#34291c45;border:2px solid transparent;border-radius:4px}
+.album-video-position{position:absolute;top:9px;left:9px;min-width:29px;height:29px;padding:3px 8px;display:grid;place-items:center;background:#fffaf2ed;border-radius:50%;color:var(--ink);font-size:13px}
+.album-video-drag-handle{display:flex;align-items:center;gap:5px;min-height:48px;padding:10px 12px;background:#fffaf2f5;box-shadow:0 3px 18px #34291c33;border:1px solid #fff9eb;border-radius:5px;color:var(--ink);cursor:grab;touch-action:none;font-size:12px;user-select:none}
+.album-video-drag-handle:active{cursor:grabbing}
+.album-video-item.is-dragging{opacity:.65}
+.album-video-item.is-drop-target .album-video-sort-overlay{border-color:#8d9c75;box-shadow:0 0 0 3px #8d9c752f}
+.album-video-move-controls{display:flex;gap:8px;margin-top:12px}
+.album-video-move-controls>.button{flex:1;min-height:42px;font-size:12px;padding:9px}
+.album-video-sort-actions{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.album-videos button:disabled{cursor:not-allowed}
+.album-videos.sorting .album-video-player{pointer-events:none}
+@media(max-width:760px){.album-video-sort-toolbar{gap:10px}.album-video-sort-toolbar>.button{min-height:44px}.album-video-move-controls>.button{min-height:44px;font-size:13px}.album-video-sort-actions>.button{flex:1;padding:12px}}
+@media(prefers-reduced-motion:reduce){.album-video-item{transition:none}}

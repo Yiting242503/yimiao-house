@@ -1,0 +1,173 @@
+:root {
+  color-scheme: light;
+  font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  color: #655246;
+  background: #f6f2eb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 280px;
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0;
+  padding: clamp(22px, 5vw, 80px);
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(ellipse at 12% 20%, #efe2d288, transparent 55%),
+    radial-gradient(ellipse at 88% 88%, #e1e4d666, transparent 50%),
+    #f6f2eb;
+}
+
+.welcome {
+  width: min(1280px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: clamp(24px, 4vw, 68px);
+  align-items: center;
+}
+
+.room {
+  overflow: hidden;
+  aspect-ratio: 1.08;
+  border-radius: 160px 160px 18px 18px;
+  border: 8px solid #fffcf7;
+  box-shadow: 0 25px 70px #74553b16, 0 0 0 1px #a68b7220;
+}
+
+.room img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 48% 50%;
+}
+
+.invitation {
+  text-align: center;
+  padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.house-mark {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #eee5d8;
+  color: #91745e;
+  margin-bottom: 24px;
+}
+
+.house-mark svg {
+  width: 31px;
+  height: 31px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+h1 {
+  font-family: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+  font-size: clamp(42px, 4.4vw, 65px);
+  font-weight: 500;
+  letter-spacing: .09em;
+  line-height: 1.35;
+  margin: 0;
+  padding-left: .09em;
+  color: #665141;
+}
+
+.tagline, .lamp {
+  font-family: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+  font-weight: 400;
+  line-height: 1.8;
+}
+
+.tagline {
+  font-size: clamp(17px, 1.5vw, 21px);
+  letter-spacing: .1em;
+  margin: 18px 0 0;
+  color: #806a58;
+}
+
+.little-line {
+  width: 36px;
+  height: 1px;
+  background: #bca48d;
+  margin: 32px 0 23px;
+}
+
+.lamp {
+  font-size: 16px;
+  letter-spacing: .1em;
+  margin: 0 0 29px;
+  color: #7d6959;
+}
+
+.enter {
+  min-height: 52px;
+  min-width: 192px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 23px;
+  padding: 15px 26px;
+  border-radius: 6px;
+  background: #68745e;
+  color: #fffdf7;
+  text-decoration: none;
+  font-size: 15px;
+  letter-spacing: .06em;
+  box-shadow: 0 6px 18px #56604616;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.enter svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.enter:hover { background: #626e58; transform: translateY(-2px); }
+.enter:active { transform: translateY(0); }
+.enter:focus-visible { outline: 3px solid #8c6c50; outline-offset: 5px; }
+
+.private-note {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #776555;
+  margin: 23px 0 0;
+}
+
+@media (max-width: 720px) {
+  body { padding: 28px 24px 38px; }
+  .welcome { max-width: 480px; grid-template-columns: 1fr; gap: 29px; }
+  .room { aspect-ratio: 1.55; border-width: 5px; border-radius: 100px 100px 12px 12px; }
+  .room img { object-position: 48% 56%; }
+  .invitation { padding: 0; }
+  .house-mark { width: 44px; height: 44px; margin-bottom: 15px; }
+  .house-mark svg { width: 26px; height: 26px; }
+  h1 { font-size: 43px; }
+  .tagline { margin-top: 11px; font-size: 17px; }
+  .little-line { margin: 21px 0 16px; }
+  .lamp { font-size: 15px; margin-bottom: 22px; }
+  .private-note { margin-top: 19px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter { transition: none; }
+  .enter:hover { transform: none; }
+}

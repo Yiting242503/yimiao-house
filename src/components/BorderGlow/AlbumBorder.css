@@ -1,0 +1,20 @@
+.album-border-glow {
+  height: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.album-border-glow > .border-glow-inner {
+  height: 100%;
+  overflow: visible;
+}
+
+.album-border-glow .entry-card {
+  height: 100%;
+  flex: 1;
+  background-clip: padding-box;
+  border-color: transparent;
+}

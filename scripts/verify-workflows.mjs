@@ -1,0 +1,31 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+const base='http://127.0.0.1:5173';
+const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
+const a=await browser.newContext({viewport:{width:430,height:932}}),b=await browser.newContext({viewport:{width:1440,height:1000}});
+const title=`Workflow ${Date.now()}`;
+try {
+  const page=await a.newPage(),partner=await b.newPage();
+  await page.goto(base);await page.getByRole('button',{name:'用体验账号 A 进入'}).click();await page.locator('.room-image').waitFor();
+  await partner.goto(base);await partner.getByRole('button',{name:'用体验账号 B 进入'}).click();await partner.locator('.room-image').waitFor();
+  await page.locator('.hotspot').filter({hasText:'写给你的话'}).click();await page.getByRole('button',{name:'写一封信',exact:true}).click();
+  await page.getByRole('textbox',{name:'想对你说'}).fill(title);
+  await page.locator('.photo-picker input').setInputFiles('public/assets/room.webp');await page.locator('.selected-photo').waitFor();
+  await page.locator('.photo-picker input').setInputFiles('public/assets/room.webp');await page.waitForFunction(()=>document.querySelectorAll('.selected-photo img').length===2);
+  await page.waitForFunction(()=>Array.from(document.querySelectorAll('.selected-photo img')).every(i=>i.complete&&i.naturalWidth>0));
+  let failOnce=true;
+  await page.route('**/api/upload',async route=>{if(failOnce){failOnce=false;await route.fulfill({status:503,contentType:'application/json',body:'{"error":"模拟上传失败，请重试"}'});}else await route.continue();});
+  await page.getByRole('button',{name:'保存草稿',exact:true}).click();await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('textbox',{name:'想对你说'}).inputValue(),title);
+  await page.getByRole('button',{name:'重试上传',exact:true}).click();await page.locator('.modal').waitFor({state:'hidden'});
+  const draftA=await page.request.get(base+'/api/house');const draft=(await draftA.json()).entries.find(e=>e.text===title);assert.equal(draft.status,'draft');assert.equal(draft.media.length,2);
+  await partner.reload();const bState=await (await partner.request.get(base+'/api/house')).json();assert.equal(bState.entries.some(e=>e.id===draft.id),false);
+  await page.locator('.entry-card').filter({hasText:title}).click();await page.getByRole('button',{name:'发送给你',exact:true}).click();await page.locator('.modal').waitFor({state:'hidden'});
+  await partner.reload();await partner.locator('.hotspot').filter({hasText:'写给你的话'}).click();await partner.locator('.entry-card').filter({hasText:title}).click();
+  await partner.getByRole('textbox',{name:'回复内容'}).fill('Workflow reply');await partner.getByRole('button',{name:'发送回复',exact:true}).click();await partner.getByText('Workflow reply',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'回到小屋',exact:true}).click();await page.reload();await page.locator('.hotspot').filter({hasText:'写给你的话'}).click();await page.locator('.entry-card').filter({hasText:title}).click();
+  await page.getByRole('button',{name:'删除我的记录',exact:true}).click();await page.getByRole('button',{name:'保留',exact:true}).click();assert.equal(await page.locator('.detail-body').count(),1);
+  await page.getByRole('button',{name:'删除我的记录',exact:true}).click();await page.getByRole('button',{name:'确认删除',exact:true}).click();await page.locator('.confirm-dialog').waitFor({state:'hidden'});
+  assert.equal((await (await page.request.get(base+'/api/house')).json()).entries.some(e=>e.id===draft.id),false);
+  console.log('PASS browser A/B login, two-photo previews, failed draft upload retry stays private, publication, partner reply, read and deletion confirmation.');
+  await page.getByRole('button',{name:'回到小屋',exact:true}).click();await page.screenshot({path:'test-results/mobile-430.png',fullPage:true});
+}finally{await a.close();await b.close();await browser.close();}

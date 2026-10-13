@@ -1,0 +1,42 @@
+name: Publish the little home entrance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'github-pages/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload the public entrance
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: github-pages
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the public entrance
+        id: deployment
+        uses: actions/deploy-pages@v4

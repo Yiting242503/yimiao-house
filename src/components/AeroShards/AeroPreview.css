@@ -1,0 +1,77 @@
+.aero-preview {
+  position: relative;
+  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
+  color: #333e3b;
+  --aero-control: #fffdf8cc;
+  --aero-line: #36453a25;
+  --aero-selected: #ffffff;
+}
+
+.aero-preview--dark {
+  color: #eff4ef;
+  --aero-control: #232c2ccc;
+  --aero-line: #eff4ef35;
+  --aero-selected: #445753;
+}
+
+.aero-preview__scene { position: absolute; inset: 0; }
+.aero-preview__header {
+  position: absolute;
+  top: max(20px, env(safe-area-inset-top));
+  left: 24px;
+  right: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.aero-preview__header h1 { font-size: 18px; font-weight: 500; line-height: 1.5; }
+.aero-preview__back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; }
+.aero-preview__toolbar {
+  position: absolute;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--aero-line);
+  border-radius: 8px;
+  background: var(--aero-control);
+  backdrop-filter: blur(12px);
+  max-width: calc(100% - 32px);
+  width: max-content;
+}
+.aero-preview__toolbar button { color: inherit; background: transparent; }
+.aero-preview__modes { display: flex; gap: 2px; }
+.aero-preview__modes button { min-width: 54px; min-height: 44px; padding: 8px; border-radius: 4px; font-size: 13px; }
+.aero-preview__modes button[aria-pressed="true"] { background: var(--aero-selected); }
+.aero-preview__material { display: flex; align-items: center; gap: 8px; font-size: 12px; white-space: nowrap; }
+.aero-preview__material select { width: 90px; min-height: 44px; border-color: var(--aero-line); background: transparent; color: inherit; font-size: 13px; padding: 7px; }
+.aero-preview__material option { background: var(--aero-selected); color: inherit; }
+.aero-preview__palette { display: grid; gap: 2px; justify-items: center; }
+.aero-preview__palette-name { font-size: 12px; line-height: 18px; }
+.aero-preview__swatches { display: grid; grid-template-columns: repeat(5, 44px); }
+.aero-preview__swatch { position: relative; width: 44px; height: 44px; }
+.aero-preview__swatch::before { content: ''; position: absolute; inset: 10px; border-radius: 50%; background: var(--swatch); border: 3px solid var(--swatch-background); }
+.aero-preview__swatch[aria-pressed="true"]::before { outline: 1px solid currentColor; outline-offset: 3px; }
+.aero-preview__icon { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 44px; }
+.aero-preview__toolbar button:focus-visible, .aero-preview__back:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.aero-preview__loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; gap: 10px; align-items: center; font-size: 14px; pointer-events: none; }
+.aero-preview:has(.aero-shards[data-ready="true"]) .aero-preview__loading { display: none; }
+.aero-preview__error { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(380px, calc(100% - 40px)); text-align: center; }
+.aero-preview__error h2 { font-size: 20px; font-weight: 500; line-height: 1.6; }
+.aero-preview__error p { font-size: 14px; line-height: 1.8; margin-top: 12px; }
+.aero-preview__error button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid var(--aero-line); border-radius: 4px; background: transparent; color: inherit; margin-top: 22px; }
+@media (max-width: 620px) {
+  .aero-preview__header { left: 18px; right: 18px; }
+  .aero-preview__toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 4px 10px; width: 300px; padding: 8px 12px; bottom: max(16px, env(safe-area-inset-bottom)); }
+  .aero-preview__modes { grid-column: 1 / -1; justify-content: center; }
+  .aero-preview__material { grid-column: 1; justify-self: center; }
+  .aero-preview__palette { grid-column: 1 / -1; grid-row: 3; justify-self: center; }
+  .aero-preview__icon { grid-column: 2; grid-row: 2; }
+  .aero-preview__material span { display: none; }
+}

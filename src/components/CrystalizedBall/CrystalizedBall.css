@@ -1,0 +1,62 @@
+.crystalized-ball {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.title-crystal {
+  position: relative;
+  display: inline-block;
+  width: 86px;
+  height: 86px;
+  flex: 0 0 86px;
+  align-self: center;
+  margin-left: -10px;
+  transform: translateY(calc(0.025em + 3px));
+  vertical-align: middle;
+  pointer-events: none;
+  contain: layout paint;
+}
+
+.home-title-text {
+  align-self: center;
+}
+
+.title-crystal .crystalized-ball {
+  position: absolute;
+  inset: 0;
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.title-crystal:not([data-crystal-state="ready"]) .crystalized-ball {
+  opacity: 0;
+}
+
+.title-crystal-fallback {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #c9a77e;
+}
+
+@media (max-width: 760px) {
+  .title-crystal {
+    width: 64px;
+    height: 64px;
+    flex-basis: 64px;
+  }
+
+  .title-crystal-fallback {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-crystal .crystalized-ball {
+    transition: none;
+  }
+}

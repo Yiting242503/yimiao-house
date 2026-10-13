@@ -1,0 +1,99 @@
+.room-motion > .room-image {
+  transform-origin: 62% 46%;
+  animation: room-drift 10s ease-in-out -3s infinite alternate;
+  translate: var(--room-pan-x, 0%) var(--room-pan-y, 0%);
+  transition: translate .8s ease-out;
+  will-change: transform;
+}
+
+.room-daylight {
+  position: absolute;
+  inset: -4%;
+  z-index: 1;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background:
+    linear-gradient(113deg, transparent 30%, #fff2d16b 49%, #fff9ea33 60%, transparent 79%),
+    linear-gradient(113deg, transparent 48%, #fff9ea47 53%, #fff9ea1f 58%, transparent 63%);
+  animation: room-daylight 8s ease-in-out -2s infinite alternate;
+}
+
+.room-window-shadow {
+  position: absolute;
+  inset: -4%;
+  z-index: 1;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  clip-path: polygon(74% 0, 100% 0, 100% 100%, 22% 100%);
+  background: repeating-linear-gradient(113deg, transparent 0 15%, #68584b1f 18% 20%, transparent 23% 34%);
+  animation: room-window-shadow 11s ease-in-out -3s infinite alternate;
+}
+
+.room-motion > .room-corner { z-index: 2; }
+
+.room-motion-toggle.icon-button {
+  position: absolute;
+  z-index: 4;
+  top: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  color: #715d4a;
+  background: transparent;
+  border: 0;
+}
+
+.room-motion-toggle.icon-button::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #fffaf0bd;
+  border: 0;
+  backdrop-filter: blur(8px);
+}
+.room-motion-toggle.icon-button svg { position: relative; }
+
+.room-motion-toggle.icon-button:hover { background: transparent; }
+.room-motion-toggle.icon-button:hover::before { background: #fffaf0ed; }
+.room-motion-toggle.icon-button:focus-visible { outline: none; }
+.room-motion-toggle.icon-button:focus-visible::after {
+  content: '';
+  position: absolute;
+  bottom: 8px;
+  left: 17px;
+  right: 17px;
+  height: 2px;
+  background: currentColor;
+}
+.room-motion-toggle.icon-button:disabled { cursor: default; opacity: .55; }
+
+.room-motion[data-motion="paused"] > .room-image,
+.room-motion[data-motion="paused"] > .room-daylight,
+.room-motion[data-motion="paused"] > .room-window-shadow { animation-play-state: paused; }
+.room-motion[data-motion="paused"] > .room-image { will-change: auto; transition: none; }
+
+@keyframes room-drift {
+  from { transform: translate3d(-.45%, .25%, 0) scale(1.025); }
+  to { transform: translate3d(.55%, -.35%, 0) scale(1.09); }
+}
+
+@keyframes room-daylight {
+  from { transform: translate3d(4%, -1%, 0); opacity: .18; }
+  to { transform: translate3d(-7%, 2%, 0); opacity: .82; }
+}
+
+@keyframes room-window-shadow {
+  from { transform: translate3d(-3%, 1%, 0); opacity: .22; }
+  to { transform: translate3d(4%, -1%, 0); opacity: .58; }
+}
+
+@media (max-width: 760px) {
+  .room-motion-toggle.icon-button { top: 10px; right: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-motion > .room-image { animation: none; transform: none; translate: none; transition: none; will-change: auto; }
+  .room-motion > .room-daylight,
+  .room-motion > .room-window-shadow { animation: none; opacity: 0; }
+}

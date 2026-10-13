@@ -1,0 +1,58 @@
+.glass-surface {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.glass-surface--decorative { pointer-events: none; }
+
+.glass-surface__filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.glass-surface__content {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: inherit;
+  position: relative;
+  z-index: 1;
+}
+
+.glass-surface--svg {
+  background: rgb(255 250 240 / var(--glass-frost, 0));
+  backdrop-filter: var(--filter-id) saturate(var(--glass-saturation, 1));
+  box-shadow:
+    inset 0 0 2px 1px rgb(255 250 242 / 55%),
+    inset 0 0 10px 4px rgb(116 86 59 / 8%),
+    0 4px 16px rgb(58 42 28 / 8%),
+    0 8px 24px rgb(58 42 28 / 5%);
+}
+
+.glass-surface--fallback {
+  background: rgb(255 250 240 / 32%);
+  backdrop-filter: blur(10px) saturate(var(--glass-saturation, 1)) brightness(1.06);
+  -webkit-backdrop-filter: blur(10px) saturate(var(--glass-saturation, 1)) brightness(1.06);
+  border: 1px solid rgb(255 251 244 / 60%);
+  box-shadow:
+    0 4px 16px rgb(58 42 28 / 8%),
+    inset 0 1px 0 rgb(255 255 255 / 65%),
+    inset 0 -1px 0 rgb(255 250 242 / 25%);
+}
+
+@supports not ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
+  .glass-surface--fallback { background: rgb(255 250 240 / 76%); }
+}
+
+.glass-surface:focus-visible { outline: 2px solid #ad8d70; outline-offset: 3px; }

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1791531220027,
+      "tag": "0000_damp_bromley",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791594602258,
+      "tag": "0001_flat_naoko",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791698057146,
+      "tag": "0002_overrated_blazing_skull",
+      "breakpoints": true
+    }
+  ]
+}
