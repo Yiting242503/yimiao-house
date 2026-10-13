@@ -322,6 +322,22 @@ const CircularCarousel = ({
   }, [list, active, count, compact, loadedSources]);
 
   useEffect(() => {
+    if (!compact || !frontPainted) return undefined;
+    // Keep every card in the ring. Fetch the remaining small photos after the first
+    // paint so the whole album fills in without delaying its centre photograph.
+    const loadRemaining = () => setRequestedSources(previous => {
+      if (list.every(item => previous.has(item.src))) return previous;
+      return new Set([...previous, ...list.map(item => item.src)]);
+    });
+    if (window.requestIdleCallback) {
+      const idle = window.requestIdleCallback(loadRemaining, { timeout: 600 });
+      return () => window.cancelIdleCallback(idle);
+    }
+    const timer = setTimeout(loadRemaining, 100);
+    return () => clearTimeout(timer);
+  }, [compact, frontPainted, list]);
+
+  useEffect(() => {
     if (!leaving) return undefined;
     const timer = setTimeout(() => setLeaving(null), SWAP_LENGTH + SWAP_SPREAD + 80);
     return () => clearTimeout(timer);
@@ -440,7 +456,7 @@ const CircularCarousel = ({
         }
       }
 
-      const paused = (s.pauseOnHover && state.hover) || state.drag || now < state.holdUntil;
+      const paused = (s.pauseOnHover && !s.compact && state.hover) || state.drag || now < state.holdUntil;
       const cruise = s.autoplay === 'drift' && !paused && !state.intro ? s.speed * state.dir : 0;
       let busy = Boolean(state.intro) || state.drag;
 
@@ -546,7 +562,7 @@ const CircularCarousel = ({
 
         const world = wrap(base + angle);
         const facing = Math.cos(world * TO_RAD);
-        card.style.visibility = (s.layout.inward && Math.abs(world) > 86) || (s.compact && Math.abs(world) > 100) ? 'hidden' : '';
+        card.style.visibility = s.layout.inward && Math.abs(world) > 86 ? 'hidden' : '';
         const fade = s.depthFade * Math.pow((1 - facing) / 2, 1.25);
         card.style.setProperty('--cc-depth', fade.toFixed(3));
       }
@@ -765,7 +781,7 @@ const CircularCarousel = ({
     const velocity = span > 0.008 ? clamp((last.angle - first.angle) / span, -1400, 1400) : 0;
     state.velocity = s.reduced ? 0 : velocity;
     if (Math.abs(velocity) > 60) state.dir = Math.sign(velocity);
-    const coasting = s.autoplay === 'drift' && !(s.pauseOnHover && state.hover && event.pointerType === 'mouse');
+    const coasting = s.autoplay === 'drift' && !(s.pauseOnHover && !s.compact && state.hover && event.pointerType === 'mouse');
     if (s.snap && !coasting) {
       const tau = 0.18 + s.momentum * 1.5;
       state.target = Math.round((state.angle + (s.reduced ? 0 : velocity * tau * 0.55)) / s.step) * s.step;
@@ -819,7 +835,7 @@ const CircularCarousel = ({
   const renderTile = (item, tile, back, index) => {
     const distance = Math.abs(index - active);
     const near = Math.min(distance, count - distance) <= (compact ? 1 : 2);
-    const loadPhoto = compact ? index === active || (near && loadedSources.has(current?.src)) : requestedSources.has(item.src) || near;
+    const loadPhoto = compact ? requestedSources.has(item.src) || index === active || (near && loadedSources.has(current?.src)) : requestedSources.has(item.src) || near;
     const strip = back ? tile.total - 1 - tile.index : tile.index;
     const first = strip === 0;
     const last = strip === tile.total - 1;
@@ -857,7 +873,7 @@ const CircularCarousel = ({
             alt=""
             draggable={false}
             decoding="async"
-            fetchPriority={index === active ? 'high' : 'auto'}
+            fetchPriority={index === active ? 'high' : near ? 'auto' : 'low'}
             onLoad={tile.index === 0 && !back ? () => setLoadedSources(previous => previous.has(item.src) ? previous : new Set([...previous, item.src])) : undefined}
             style={photoStyle}
           />}
@@ -928,8 +944,8 @@ const CircularCarousel = ({
                   aria-roledescription="照片"
                   aria-label={`${item.title || item.alt || `回忆照片 ${index + 1}`}，第 ${index + 1} 张，共 ${count} 张`}
                 >
-                  {(!compact || Math.min(Math.abs(index-active),count-Math.abs(index-active))<=1) && tiles.map(tile => renderTile(item, tile, false, index))}
-                  {!compact && layout.backfaces && tiles.map(tile => renderTile(item, tile, true, index))}
+                  {tiles.map(tile => renderTile(item, tile, false, index))}
+                  {layout.backfaces && tiles.map(tile => renderTile(item, tile, true, index))}
                 </div>
               ))}
             </div>
